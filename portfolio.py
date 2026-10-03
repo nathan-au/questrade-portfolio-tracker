@@ -94,7 +94,7 @@ def print_account(session, base, account):
     ):
         return
 
-    print(f"\n=== {account['type']} ({num}) ===")
+    print(f"\n--- {account['type']} ({num}) ---")
     rows = [
         (
             p["symbol"],
@@ -109,20 +109,23 @@ def print_account(session, base, account):
     ]
     if rows:
         print_table(
-            ("Symbol", "Quantity", "Avg Entry", "Price", "Market Value", "Day P&L", "Open P&L"),
+            ("Symbol", "Shares", "Average", "Last", "Market Value", "Day P&L", "Open P&L"),
             rows,
         )
     else:
         print("(no positions)")
 
     print()
-    for b in balances["perCurrencyBalances"]:
-        print(f"Cash ({b['currency']}):          {money(b['cash'])}")
-        print(f"Market value ({b['currency']}):  {money(b['marketValue'])}")
-    for b in balances["combinedBalances"]:
-        print(f"Total cash ({b['currency']}):    {money(b['cash'])}")
-        print(f"Total market value ({b['currency']}): {money(b['marketValue'])}")
-        print(f"Total value ({b['currency']}):   {money(b['totalEquity'])}")
+    combined = balances["combinedBalances"]
+    lines = [(f"Total cash ({b['currency']}):", money(b["cash"])) for b in combined]
+    for b in combined:
+        if b["currency"] != "USD":
+            lines.append((f"Total market value ({b['currency']}):", money(b["marketValue"])))
+            lines.append((f"Total value ({b['currency']}):", money(b["totalEquity"])))
+    label_w = max((len(label) for label, _ in lines), default=0)
+    value_w = max((len(value) for _, value in lines), default=0)
+    for label, value in lines:
+        print(f"{label.ljust(label_w)}  {value.rjust(value_w)}")
 
 
 def main():
@@ -131,7 +134,7 @@ def main():
         sys.exit(f"{TOKEN_VAR} not found in {ENV_PATH}")
     for var in names:
         owner = var[len(TOKEN_VAR):].lstrip("_") or "default"
-        print(f"\n##### {owner} #####")
+        print(f"\n=== {owner} ===")
         try:
             result = refresh_session(var)
             if result is None:
