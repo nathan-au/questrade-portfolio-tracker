@@ -55,35 +55,24 @@ def money(value):
     return "-" if value is None else f"{value:,.2f}"
 
 
-def signed_money(value):
+def signed(value, suffix=""):
     """Like money(), but with an explicit + for gains."""
     if value is None:
         return "-"
     value = round(value, 2)
-    return f"{value:+,.2f}" if value else "0.00"
+    return f"{value:+,.2f}{suffix}" if value else f"0.00{suffix}"
 
 
 def pct(numerator, denominator):
-    """Signed percentage string, or '-' when it can't be computed."""
-    if numerator is None or not denominator:
-        return "-"
-    value = round(numerator / denominator * 100, 2)
-    return f"{value:+,.2f}%" if value else "0.00%"
+    return "-" if numerator is None or not denominator else signed(numerator / denominator * 100, "%")
 
 
-def dim(text):
-    return f"{DIM}{text}{RESET}" if USE_COLOR else text
+def paint(text, color):
+    return f"{color}{text}{RESET}" if USE_COLOR and color else text
 
 
 def qty(value):
     return f"{value:,.4f}".rstrip("0").rstrip(".")
-
-
-def signed_color(text):
-    """ANSI colour for a formatted number: red if negative, green if positive, none otherwise."""
-    if not USE_COLOR or text[:1] not in ("+", "-") or text == "-":
-        return ""
-    return RED if text.startswith("-") else GREEN
 
 
 def print_table(headers, rows, signed_cols=()):
@@ -91,21 +80,21 @@ def print_table(headers, rows, signed_cols=()):
 
     signed_cols: indexes of columns to colour red/green by sign.
     """
-    widths = [max(len(str(r[i])) for r in [headers, *rows]) for i in range(len(headers))]
+    widths = [max(len(r[i]) for r in [headers, *rows]) for i in range(len(headers))]
 
-    bar = dim("│")
+    bar = paint("│", DIM)
 
     def fmt(row):
         cells = []
         for i, (c, w) in enumerate(zip(row, widths)):
-            text = str(c).ljust(w) if i == 0 else str(c).rjust(w)  # pad before colouring
-            if i in signed_cols and (color := signed_color(str(c))):
-                text = f"{color}{text}{RESET}"
+            text = c.ljust(w) if i == 0 else c.rjust(w)  # pad before colouring
+            if i in signed_cols and len(c) > 1:  # a lone "-" means no value
+                text = paint(text, {"+": GREEN, "-": RED}.get(c[0]))
             cells.append(text)
         return bar + " " + f" {bar} ".join(cells) + " " + bar
 
     def rule(left, mid, right):
-        return dim(left + mid.join("─" * (w + 2) for w in widths) + right)
+        return paint(left + mid.join("─" * (w + 2) for w in widths) + right, DIM)
 
     print(rule("┌", "┬", "┐"))
     print(fmt(headers))
@@ -134,10 +123,10 @@ def print_account(session, base, account):
             money(p["averageEntryPrice"]),
             money(p["currentPrice"]),
             money(p["currentMarketValue"]),
-            signed_money(p["dayPnl"]),
+            signed(p["dayPnl"]),
             # Day % is relative to the value at yesterday's close.
             pct(p["dayPnl"], (p["currentMarketValue"] or 0) - (p["dayPnl"] or 0)),
-            signed_money(p["openPnl"]),
+            signed(p["openPnl"]),
             pct(p["openPnl"], p["totalCost"]),
         )
         for p in positions
