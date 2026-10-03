@@ -51,8 +51,8 @@ def get(session, base, path):
     return resp.json()
 
 
-def money(value):
-    return "-" if value is None else f"{value:,.2f}"
+def money(value, suffix=""):
+    return "-" if value is None else f"{value:,.2f}{suffix}"
 
 
 def signed(value, suffix=""):
@@ -115,18 +115,22 @@ def print_account(session, base, account):
         return
 
     print(f"\n--- {account['type']} ({num}) ---")
+    # Position data has no currency, so look each symbol up in one batched request.
+    ids = ",".join(str(p["symbolId"]) for p in positions)
+    symbols = get(session, base, f"v1/symbols?ids={ids}")["symbols"] if ids else []
+    currency = {s["symbolId"]: f" {s['currency']}" for s in symbols}
     positions = sorted(positions, key=lambda p: p["currentMarketValue"] or 0, reverse=True)
     rows = [
         (
             p["symbol"],
             qty(p["openQuantity"]),
-            money(p["averageEntryPrice"]),
-            money(p["currentPrice"]),
-            money(p["currentMarketValue"]),
-            signed(p["dayPnl"]),
+            money(p["averageEntryPrice"], currency[p["symbolId"]]),
+            money(p["currentPrice"], currency[p["symbolId"]]),
+            money(p["currentMarketValue"], currency[p["symbolId"]]),
+            signed(p["dayPnl"], currency[p["symbolId"]]),
             # Day % is relative to the value at yesterday's close.
             pct(p["dayPnl"], (p["currentMarketValue"] or 0) - (p["dayPnl"] or 0)),
-            signed(p["openPnl"]),
+            signed(p["openPnl"], currency[p["symbolId"]]),
             pct(p["openPnl"], p["totalCost"]),
         )
         for p in positions
