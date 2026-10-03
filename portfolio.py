@@ -50,11 +50,38 @@ def get(session, base, path):
 
 
 def money(value):
-    return f"{value:,.2f}"
+    return "-" if value is None else f"{value:,.2f}"
 
 
 def qty(value):
     return f"{value:,.4f}".rstrip("0").rstrip(".")
+
+
+def print_table(headers, rows, divider_before=None):
+    """Print a boxed table; first column left-aligned, the rest right-aligned.
+
+    divider_before: row index to draw an extra horizontal line above.
+    """
+    widths = [max(len(str(r[i])) for r in [headers, *rows]) for i in range(len(headers))]
+
+    def fmt(row):
+        cells = (
+            str(c).ljust(w) if i == 0 else str(c).rjust(w)
+            for i, (c, w) in enumerate(zip(row, widths))
+        )
+        return "│ " + " │ ".join(cells) + " │"
+
+    def rule(left, mid, right):
+        return left + mid.join("─" * (w + 2) for w in widths) + right
+
+    print(rule("┌", "┬", "┐"))
+    print(fmt(headers))
+    print(rule("├", "┼", "┤"))
+    for i, r in enumerate(rows):
+        if i == divider_before:
+            print(rule("├", "┼", "┤"))
+        print(fmt(r))
+    print(rule("└", "┴", "┘"))
 
 
 def print_account(session, base, account):
@@ -67,33 +94,35 @@ def print_account(session, base, account):
     ):
         return
 
-    print(f"\n=== {account['type']} account {num} ===")
+    print(f"\n=== {account['type']} ({num}) ===")
     rows = [
-        (p["symbol"], qty(p["openQuantity"]), money(p["currentMarketValue"]), money(p["openPnl"]))
+        (
+            p["symbol"],
+            qty(p["openQuantity"]),
+            money(p["averageEntryPrice"]),
+            money(p["currentPrice"]),
+            money(p["currentMarketValue"]),
+            money(p["dayPnl"]),
+            money(p["openPnl"]),
+        )
         for p in positions
     ]
-    headers = ("Symbol", "Quantity", "Market Value", "Open P&L")
-    widths = [max(len(str(r[i])) for r in [headers, *rows]) for i in range(4)]
-
-    def fmt(row):
-        return "  ".join(
-            str(c).ljust(w) if i == 0 else str(c).rjust(w)
-            for i, (c, w) in enumerate(zip(row, widths))
+    if rows:
+        print_table(
+            ("Symbol", "Quantity", "Avg Entry", "Price", "Market Value", "Day P&L", "Open P&L"),
+            rows,
         )
-
-    print(fmt(headers))
-    print("  ".join("-" * w for w in widths))
-    for r in rows:
-        print(fmt(r))
-    if not rows:
+    else:
         print("(no positions)")
 
     print()
     for b in balances["perCurrencyBalances"]:
-        print(f"Cash ({b['currency']}):        {money(b['cash'])}")
+        print(f"Cash ({b['currency']}):          {money(b['cash'])}")
+        print(f"Market value ({b['currency']}):  {money(b['marketValue'])}")
     for b in balances["combinedBalances"]:
-        print(f"Total cash ({b['currency']}):  {money(b['cash'])}")
-        print(f"Total value ({b['currency']}): {money(b['totalEquity'])}")
+        print(f"Total cash ({b['currency']}):    {money(b['cash'])}")
+        print(f"Total market value ({b['currency']}): {money(b['marketValue'])}")
+        print(f"Total value ({b['currency']}):   {money(b['totalEquity'])}")
 
 
 def main():

@@ -1,8 +1,6 @@
 # Questrade Portfolio Tracker
 
-A single read-only script, `portfolio.py`, that prints your Questrade portfolio to the terminal. For each account it shows a table of symbol, quantity, market value and open P&L, followed by cash and total value. It only makes GET requests (plus the token exchange) and never prints your tokens.
-
-It supports several people at once, so you can see your own accounts and someone else's in one run.
+A single read-only script, `portfolio.py`, that prints your Questrade portfolio to the terminal. For each account it shows a table of symbol, quantity, market value and open P&L, followed by cash and total value. It only makes GET requests (plus the token exchange) and never prints your tokens. It supports several people at once, so you can see your own accounts and someone else's in one run.
 
 ## How it works
 
@@ -42,11 +40,3 @@ QUESTRADE_REFRESH_TOKEN_STEVE=their_token_here
 source .venv/bin/activate
 python portfolio.py
 ```
-
-If one token fails, the script prints an error for that variable and carries on with the rest.
-
-## Reading the output
-
-- Position market values and P&L are in each security's own currency (for example `.TO` tickers are CAD, US tickers are USD).
-- The CAD and USD cash and total-value lines are the same account expressed in two currencies. Don't add them together.
-- An account with no holdings prints `(no positions)`.
