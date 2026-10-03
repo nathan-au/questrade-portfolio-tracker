@@ -10,6 +10,8 @@ ENV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
 TOKEN_URL = "https://login.questrade.com/oauth2/token"
 TOKEN_VAR = "QUESTRADE_REFRESH_TOKEN"
 HIDE_EMPTY_ACCOUNTS = True  # skip accounts with no positions and no cash
+USE_COLOR = sys.stdout.isatty() and "NO_COLOR" not in os.environ
+RED, GREEN, DIM, RESET = "\033[31m", "\033[32m", "\033[2m", "\033[0m"
 
 
 def token_vars():
@@ -53,33 +55,62 @@ def money(value):
     return "-" if value is None else f"{value:,.2f}"
 
 
+def signed_money(value):
+    """Like money(), but with an explicit + for gains."""
+    if value is None:
+        return "-"
+    value = round(value, 2)
+    return f"{value:+,.2f}" if value else "0.00"
+
+
+def pct(numerator, denominator):
+    """Signed percentage string, or '-' when it can't be computed."""
+    if numerator is None or not denominator:
+        return "-"
+    value = round(numerator / denominator * 100, 2)
+    return f"{value:+,.2f}%" if value else "0.00%"
+
+
+def dim(text):
+    return f"{DIM}{text}{RESET}" if USE_COLOR else text
+
+
 def qty(value):
     return f"{value:,.4f}".rstrip("0").rstrip(".")
 
 
-def print_table(headers, rows, divider_before=None):
+def signed_color(text):
+    """ANSI colour for a formatted number: red if negative, green if positive, none otherwise."""
+    if not USE_COLOR or text[:1] not in ("+", "-") or text == "-":
+        return ""
+    return RED if text.startswith("-") else GREEN
+
+
+def print_table(headers, rows, signed_cols=()):
     """Print a boxed table; first column left-aligned, the rest right-aligned.
 
-    divider_before: row index to draw an extra horizontal line above.
+    signed_cols: indexes of columns to colour red/green by sign.
     """
     widths = [max(len(str(r[i])) for r in [headers, *rows]) for i in range(len(headers))]
 
+    bar = dim("│")
+
     def fmt(row):
-        cells = (
-            str(c).ljust(w) if i == 0 else str(c).rjust(w)
-            for i, (c, w) in enumerate(zip(row, widths))
-        )
-        return "│ " + " │ ".join(cells) + " │"
+        cells = []
+        for i, (c, w) in enumerate(zip(row, widths)):
+            text = str(c).ljust(w) if i == 0 else str(c).rjust(w)  # pad before colouring
+            if i in signed_cols and (color := signed_color(str(c))):
+                text = f"{color}{text}{RESET}"
+            cells.append(text)
+        return bar + " " + f" {bar} ".join(cells) + " " + bar
 
     def rule(left, mid, right):
-        return left + mid.join("─" * (w + 2) for w in widths) + right
+        return dim(left + mid.join("─" * (w + 2) for w in widths) + right)
 
     print(rule("┌", "┬", "┐"))
     print(fmt(headers))
     print(rule("├", "┼", "┤"))
-    for i, r in enumerate(rows):
-        if i == divider_before:
-            print(rule("├", "┼", "┤"))
+    for r in rows:
         print(fmt(r))
     print(rule("└", "┴", "┘"))
 
@@ -95,6 +126,7 @@ def print_account(session, base, account):
         return
 
     print(f"\n--- {account['type']} ({num}) ---")
+    positions = sorted(positions, key=lambda p: p["currentMarketValue"] or 0, reverse=True)
     rows = [
         (
             p["symbol"],
@@ -102,15 +134,22 @@ def print_account(session, base, account):
             money(p["averageEntryPrice"]),
             money(p["currentPrice"]),
             money(p["currentMarketValue"]),
-            money(p["dayPnl"]),
-            money(p["openPnl"]),
+            signed_money(p["dayPnl"]),
+            # Day % is relative to the value at yesterday's close.
+            pct(p["dayPnl"], (p["currentMarketValue"] or 0) - (p["dayPnl"] or 0)),
+            signed_money(p["openPnl"]),
+            pct(p["openPnl"], p["totalCost"]),
         )
         for p in positions
     ]
     if rows:
         print_table(
-            ("Symbol", "Shares", "Average", "Last", "Market Value", "Day P&L", "Open P&L"),
+            (
+                "Symbol", "Shares", "Average", "Last", "Value",
+                "Day P&L", "Day %", "Open P&L", "Open %",
+            ),
             rows,
+            signed_cols=(5, 6, 7, 8),
         )
     else:
         print("(no positions)")
@@ -121,7 +160,7 @@ def print_account(session, base, account):
     for b in combined:
         if b["currency"] != "USD":
             lines.append((f"Total market value ({b['currency']}):", money(b["marketValue"])))
-            lines.append((f"Total value ({b['currency']}):", money(b["totalEquity"])))
+            lines.append((f"Total portfolio value ({b['currency']}):", money(b["totalEquity"])))
     label_w = max((len(label) for label, _ in lines), default=0)
     value_w = max((len(value) for _, value in lines), default=0)
     for label, value in lines:
