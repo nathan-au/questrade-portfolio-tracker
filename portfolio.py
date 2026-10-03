@@ -119,7 +119,7 @@ def print_account(session, base, account):
     ids = ",".join(str(p["symbolId"]) for p in positions)
     symbols = get(session, base, f"v1/symbols?ids={ids}")["symbols"] if ids else []
     currency = {s["symbolId"]: f" {s['currency']}" for s in symbols}
-    positions = sorted(positions, key=lambda p: p["currentMarketValue"] or 0, reverse=True)
+    positions = sorted(positions, key=lambda p: p["openPnl"] or 0, reverse=True)
     rows = [
         (
             p["symbol"],
