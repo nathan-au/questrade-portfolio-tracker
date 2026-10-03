@@ -158,12 +158,15 @@ def print_account(session, base, account):
     value_w = max((len(value) for _, value in lines), default=0)
     for label, value in lines:
         print(f"{label.ljust(label_w)}  {value.rjust(value_w)}")
+    cash = {b["currency"]: b["cash"] for b in combined}
+    return cash.get("CAD"), cash.get("USD")
 
 
 def main():
     names = token_vars()
     if not names:
         sys.exit(f"{TOKEN_VAR} not found in {ENV_PATH}")
+    cash_pairs = []  # (CAD cash, USD cash) from each printed account
     for var in names:
         owner = var[len(TOKEN_VAR):].lstrip("_") or "default"
         print(f"\n=== {owner} ===")
@@ -173,10 +176,17 @@ def main():
                 continue
             session, base = result
             for account in get(session, base, "v1/accounts")["accounts"]:
-                print_account(session, base, account)
+                cash_pairs.append(print_account(session, base, account))
         except requests.RequestException as e:
             # Don't print the exception itself: URLs in it could include the token.
             print(f"Request failed for {var}: {type(e).__name__}", file=sys.stderr)
+
+    # Combined balances show the same cash in both currencies, so CAD / USD is the rate.
+    # Use the account with the most USD cash, where rounding matters least.
+    pairs = [pair for pair in cash_pairs if pair and all(pair)]
+    if pairs:
+        cad, usd = max(pairs, key=lambda pair: pair[1])
+        print(f"\n1 USD = {cad / usd:.4f} CAD (total cash in CAD divided by total cash in USD)")
 
 
 if __name__ == "__main__":
