@@ -75,12 +75,40 @@ def qty(value):
     return f"{value:,.4f}".rstrip("0").rstrip(".")
 
 
-def print_table(headers, rows, signed_cols=()):
+def usd_to_cad(combined):
+    """CAD per USD, or None. Combined balances show the same equity in both currencies."""
+    equity = {b["currency"]: b["totalEquity"] for b in combined}
+    return equity["CAD"] / equity["USD"] if equity.get("CAD") and equity.get("USD") else None
+
+
+def totals_row(positions, code, rate):
+    """Totals row in CAD, converting USD positions at `rate`; None if no rate is available."""
+    def cad(value, symbol_id):
+        return (value or 0) * (rate if code[symbol_id] == "USD" else 1)
+
+    if rate is None and any(code[p["symbolId"]] == "USD" for p in positions):
+        return None
+    value, day, openpnl, cost = (
+        sum(cad(p[key], p["symbolId"]) for p in positions)
+        for key in ("currentMarketValue", "dayPnl", "openPnl", "totalCost")
+    )
+    return (
+        "Total (CAD)", "", "", "",
+        money(value, " CAD"),
+        signed(day, " CAD"),
+        pct(day, value - day),
+        signed(openpnl, " CAD"),
+        pct(openpnl, cost),
+    )
+
+
+def print_table(headers, rows, signed_cols=(), footer=None):
     """Print a boxed table; first column left-aligned, the rest right-aligned.
 
     signed_cols: indexes of columns to colour red/green by sign.
+    footer: optional totals row, set off by a rule.
     """
-    widths = [max(len(r[i]) for r in [headers, *rows]) for i in range(len(headers))]
+    widths = [max(len(r[i]) for r in [headers, *rows, *([footer] if footer else [])]) for i in range(len(headers))]
 
     bar = paint("│", DIM)
 
@@ -101,6 +129,9 @@ def print_table(headers, rows, signed_cols=()):
     print(rule("├", "┼", "┤"))
     for r in rows:
         print(fmt(r))
+    if footer:
+        print(rule("├", "┼", "┤"))
+        print(fmt(footer))
     print(rule("└", "┴", "┘"))
 
 
@@ -118,7 +149,8 @@ def print_account(session, base, account):
     # Position data has no currency, so look each symbol up in one batched request.
     ids = ",".join(str(p["symbolId"]) for p in positions)
     symbols = get(session, base, f"v1/symbols?ids={ids}")["symbols"] if ids else []
-    currency = {s["symbolId"]: f" {s['currency']}" for s in symbols}
+    code = {s["symbolId"]: s["currency"] for s in symbols}
+    currency = {i: f" {c}" for i, c in code.items()}
     positions = sorted(positions, key=lambda p: p["openPnl"] or 0, reverse=True)
     rows = [
         (
@@ -143,6 +175,7 @@ def print_account(session, base, account):
             ),
             rows,
             signed_cols=(5, 6, 7, 8),
+            footer=totals_row(positions, code, usd_to_cad(balances["combinedBalances"])),
         )
     else:
         print("(no positions)")
